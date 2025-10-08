@@ -1,19 +1,16 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 读取数据
 df = pd.read_csv("long_trades.csv")
 df["buy_date"] = pd.to_datetime(df["buy_date"])
 df["sell_date"] = pd.to_datetime(df["sell_date"])
 df = df.sort_values(by="buy_date").reset_index(drop=True)
 
-# 初始化参数
 initial_capital = 1000.0
 capital = initial_capital
 last_sell_date = pd.Timestamp.min
 capital_evolution = []
 
-# 按条件计算复利
 for index, row in df.iterrows():
     if row["buy_date"] > last_sell_date:
         shares_bought = capital / row["buy_price"]
@@ -30,10 +27,8 @@ for index, row in df.iterrows():
             "capital": capital
         })
 
-# 转换为 DataFrame
 capital_df = pd.DataFrame(capital_evolution)
 
-# 绘制图表
 plt.figure(figsize=(10, 6))
 plt.plot(capital_df["sell_date"], capital_df["capital"], marker='o', linestyle='-')
 plt.title("Capital Growth Over Time (Compounded Trades)")
@@ -44,15 +39,11 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
 
-# ===================== 计算关键指标 & 导出 =====================
 
 import numpy as np
 
-# 1) 逐笔收益率（做多：sell/buy - 1）
 capital_df["ret_trade"] = capital_df["sell_price"] / capital_df["buy_price"] - 1.0
 
-# 2) 构造按日权益曲线（在每个sell_date打点，其它日期前向填充）
-#    起点放在第一笔买入前一天，数值是 initial_capital
 if not capital_df.empty:
     start_day = pd.to_datetime(capital_df["buy_date"].iloc[0]) - pd.Timedelta(days=1)
     equity_points = pd.DataFrame({
@@ -60,25 +51,25 @@ if not capital_df.empty:
         "equity": [initial_capital] + list(capital_df["capital"])
     }).set_index("date").sort_index()
 
-    # 变成日频并向前填充
+  
     daily_eq = equity_points.resample("D").ffill()
 else:
     daily_eq = pd.DataFrame(columns=["equity"])
 
-# 3) 基于“日频权益”计算指标
+
 def perf_metrics(daily_equity: pd.DataFrame, risk_free=0.0):
     if daily_equity.empty:
         return {}
 
     eq = daily_equity["equity"].astype(float)
-    rets = eq.pct_change().dropna()  # 日收益率
+    rets = eq.pct_change().dropna()
     if rets.empty:
         return {}
 
     days = (eq.index[-1] - eq.index[0]).days or 1
-    ann_factor = 252  # 交易日年化因子
+    ann_factor = 252  
 
-    # CAGR（按自然日计算）
+
     cagr = (eq.iloc[-1] / eq.iloc[0]) ** (365.25 / days) - 1
 
     vol = rets.std() * np.sqrt(ann_factor)
@@ -87,7 +78,6 @@ def perf_metrics(daily_equity: pd.DataFrame, risk_free=0.0):
     downside = rets[rets < 0].std() * np.sqrt(ann_factor)
     sortino = (rets.mean() * ann_factor - risk_free) / downside if downside > 0 else np.nan
 
-    # 最大回撤
     rolling_max = eq.cummax()
     dd = eq / rolling_max - 1.0
     max_dd = float(dd.min())
@@ -121,7 +111,7 @@ for k, v in metrics.items():
     else:
         print(f"{k:>22}: {v}")
 
-# 4) 保存按日权益和图像
+
 daily_eq.to_csv("equity_curve_daily.csv")
 plt.figure(figsize=(10, 4.5))
 daily_eq["equity"].plot()
